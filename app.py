@@ -120,13 +120,14 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    import sys
-    print(
-        "\nERROR: Do not run this file with python3 directly.\n"
-        "Streamlit apps must be launched with:\n\n"
-        "    streamlit run app.py\n",
-        file=sys.stderr,
-    )
-    sys.exit(1)
+    from streamlit.runtime.scriptrunner import get_script_run_ctx
+    if get_script_run_ctx() is None:
+        import sys
+        print(
+            "\nERROR: Do not run this file with python3 directly.\n"
+            "Launch with:\n\n    streamlit run app.py\n",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 main()
