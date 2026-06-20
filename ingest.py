@@ -96,12 +96,14 @@ class CsvFetcher:
     def fetch(self) -> pd.DataFrame:
         log.info("Downloading CSV from %s", self._config.csv_url)
         try:
-            df = pd.read_csv(
-                self._config.csv_url,
-                dtype=str,             # read all as string; parse types below
-                low_memory=False,
-                storage_options={"timeout": self._config.csv_read_timeout},
-            )
+            # Use httpx (certifi-backed SSL) instead of pd.read_csv(url) which
+            # uses urllib and fails on macOS Python 3.10 due to missing CA certs.
+            import io
+            import httpx
+            with httpx.Client(timeout=self._config.csv_read_timeout, follow_redirects=True) as client:
+                resp = client.get(self._config.csv_url)
+                resp.raise_for_status()
+            df = pd.read_csv(io.BytesIO(resp.content), dtype=str, low_memory=False)
         except Exception as exc:
             log.error("CSV download failed: %s", exc)
             raise
