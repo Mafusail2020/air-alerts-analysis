@@ -103,11 +103,12 @@ def render_map(
     fig.update_geos(
         fitbounds="locations",
         visible=False,
+        projection_scale=1,     # lock scale so double-click reset stays consistent
     )
     fig.update_layout(
         margin=dict(l=0, r=0, t=0, b=0),
         height=420,
-        dragmode=False,
+        dragmode=False,         # no pan/drag
     )
 
     event = st.plotly_chart(
@@ -115,6 +116,11 @@ def render_map(
         use_container_width=True,
         on_select="rerun",
         key="ukraine_map",
+        config={
+            "scrollZoom": False,        # disable scroll-wheel zoom
+            "doubleClick": False,       # disable double-click zoom/reset
+            "displayModeBar": False,    # hide toolbar (removes zoom/pan buttons)
+        },
     )
     return event
 

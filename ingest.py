@@ -59,6 +59,15 @@ log = logging.getLogger("ingest")
 # No id or alert_type columns — both are synthesised during normalisation.
 _CSV_REQUIRED_COLS: frozenset[str] = frozenset({"oblast", "started_at", "finished_at", "level"})
 
+# Vadimkin uses short oblast names ("Cherkasy") while GeoJSON name:en uses the
+# long form ("Cherkasy Oblast"). All analytics join on oblast_name, so every
+# name must be normalised to the long form at ingest time.
+def _canonical_oblast(name: str) -> str:
+    """'Cherkasy' → 'Cherkasy Oblast'.  Already-canonical names pass through."""
+    if any(name.endswith(suffix) for suffix in ("Oblast", "City", "Republic", "Crimea")):
+        return name
+    return f"{name} Oblast"
+
 # Max duration cap for open-ended alerts — matches cleaner.MAX_IMPUTE_HOURS
 _MAX_IMPUTE_HOURS: int = 24
 
@@ -130,8 +139,9 @@ class CsvFetcher:
         # All records in this dataset are air raid siren events.
         df["alert_type"] = "air_raid"
 
-        # Oblast name is always the top-level "oblast" column regardless of level.
-        df["oblast_name"] = df["oblast"].str.strip()
+        # Normalise to canonical "X Oblast" form so names match GeoJSON name:en values.
+        # Vadimkin uses short names ("Cherkasy"); GeoJSON and our lookup use long form.
+        df["oblast_name"] = df["oblast"].str.strip().apply(_canonical_oblast)
         df["region_type"] = df["level"].str.strip()
         df["mapping_source"] = "direct"
 
