@@ -105,8 +105,11 @@ def main() -> None:
 
     with tab3:
         st.caption(
-            "Logistic regression model trained on the rolling 7-day alert history. "
-            "Estimates probability of an alert occurring in the selected region within the next 12 hours."
+            "**Method:** Logistic regression (sklearn) trained per-oblast on hourly alert buckets. "
+            "Features: (1) rolling 7-day alert count, (2) hour of day, (3) day of week — all Z-score standardised. "
+            "Binary target: was there ≥1 alert in the 12 hours *after* each training hour? "
+            "Output is P(alert | next 12 h) from `predict_proba()`. "
+            "Falls back to `rolling_7d / 168` (naive frequency rate) if no trained model exists for the selected oblast."
         )
         charts.render_prediction_gauge(selected)
 
