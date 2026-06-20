@@ -77,34 +77,48 @@ def render_map(
         }
     )
 
+    # Pin zmin/zmax so both the base layer and the selection overlay share
+    # the same colour scale — prevents the selected oblast from being
+    # recoloured relative to its own single-value range.
+    z_min = int(df["count"].min())
+    z_max = int(df["count"].max()) or 1  # guard against all-zero data
+
     fig = go.Figure(
         go.Choropleth(
             geojson=geojson,
             locations=df["oblast"],
             featureidkey=f"properties.{name_field}",
             z=df["count"],
+            zmin=z_min,
+            zmax=z_max,
             colorscale="Reds",
             colorbar=dict(title="Total Alerts"),
             marker_line_color="black",
             marker_line_width=0.5,
             customdata=df[["oblast"]].values,
+            # Dim unselected regions when a selection is active
+            opacity=0.8 if selected_oblast else 1.0,
         )
     )
 
-    # Highlight selected oblast with a border overlay
     if selected_oblast:
         selected_df = df[df["oblast"] == selected_oblast]
         if not selected_df.empty:
+            # Re-draw selected oblast at full opacity on top of the dimmed layer,
+            # with a yellow border for visual emphasis.
             fig.add_trace(
                 go.Choropleth(
                     geojson=geojson,
                     locations=selected_df["oblast"],
                     featureidkey=f"properties.{name_field}",
-                    z=[1],
-                    colorscale=[[0, "rgba(0,0,0,0)"], [1, "rgba(0,0,0,0)"]],
+                    z=selected_df["count"],
+                    zmin=z_min,
+                    zmax=z_max,
+                    colorscale="Reds",
                     showscale=False,
                     marker_line_color="yellow",
                     marker_line_width=3,
+                    opacity=1.0,
                 )
             )
 
