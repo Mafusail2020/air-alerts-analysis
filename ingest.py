@@ -28,12 +28,15 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import io
 import logging
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import httpx
+import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
 
@@ -89,8 +92,6 @@ class CsvFetcher:
         try:
             # Use httpx (certifi-backed SSL) instead of pd.read_csv(url) which
             # uses urllib and fails on macOS Python 3.10 due to missing CA certs.
-            import io
-            import httpx
             with httpx.Client(timeout=self._config.csv_read_timeout, follow_redirects=True) as client:
                 resp = client.get(self._config.csv_url)
                 resp.raise_for_status()
@@ -119,9 +120,12 @@ class CsvFetcher:
 
         # Synthesise a stable integer id: hash of (oblast, started_at string).
         # Reproducible across runs so deduplication in store.append_raw() works.
-        df["id"] = pd.util.hash_pandas_object(
+        # hash_pandas_object returns uint64; view bits as int64 to avoid safe-cast
+        # overflow (uint64 values > 2^63 cannot be safely cast to signed Int64).
+        hash_u64 = pd.util.hash_pandas_object(
             df[["oblast", "started_at"]].astype(str), index=False
-        ).astype("Int64")
+        ).to_numpy()
+        df["id"] = pd.array(hash_u64.view(np.int64), dtype="Int64")
 
         # All records in this dataset are air raid siren events.
         df["alert_type"] = "air_raid"
@@ -129,7 +133,6 @@ class CsvFetcher:
         # Oblast name is always the top-level "oblast" column regardless of level.
         df["oblast_name"] = df["oblast"].str.strip()
         df["region_type"] = df["level"].str.strip()
-        df["raion_name"] = df["raion"] if "raion" in df.columns else pd.NA
         df["mapping_source"] = "direct"
 
         name_to_id = {v: k for k, v in _OBLAST_NAME_TO_ID.items()}
@@ -141,7 +144,8 @@ class CsvFetcher:
             log.warning("%d rows have unrecognised oblast names: %s", unmapped, unknown)
 
         # raion_id not available as integer in this dataset
-        df["raion_id"] = pd.array([pd.NA] * len(df), dtype="Int16")
+        df["raion_id"] = pd.NA
+        df["raion_id"] = df["raion_id"].astype("Int16")
 
         return df.dropna(subset=["id", "started_at", "oblast_name"])
 
@@ -150,7 +154,8 @@ class CsvFetcher:
         if since is None or self._config.force_full:
             log.info("Full load — processing all %d rows", len(df))
             return df
-        cutoff = pd.Timestamp(since).tz_convert("UTC")
+        ts = pd.Timestamp(since)
+        cutoff = ts.tz_localize("UTC") if ts.tzinfo is None else ts.tz_convert("UTC")
         delta = df[df["started_at"] > cutoff]
         log.info(
             "Delta load — %d new rows since %s (of %d total)",
