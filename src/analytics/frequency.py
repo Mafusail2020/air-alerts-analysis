@@ -32,6 +32,11 @@ def build_frequency_figure(
 
     if oblast_name:
         df = df[df["oblast_name"] == oblast_name]
+        # aggregator outer-joins weekly (period × oblast) with heatmap
+        # (hour × dow × oblast), producing 168 duplicate rows per week.
+        # National branch collapses them via groupby; oblast branch must
+        # deduplicate here or 168 overlapping bars render as 100% opacity.
+        df = df.drop_duplicates(subset=["period_start"])
     else:
         # National: aggregate across all oblasts per week
         df = (

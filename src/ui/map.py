@@ -85,7 +85,7 @@ def render_map(
             z=df["count"],
             colorscale="Reds",
             colorbar=dict(title="Total Alerts"),
-            marker_line_color="white",
+            marker_line_color="black",
             marker_line_width=0.5,
             customdata=df[["oblast"]].values,
         )
@@ -109,14 +109,19 @@ def render_map(
             )
 
     fig.update_geos(
-        fitbounds="locations",
         visible=False,
-        projection_scale=1,
         bgcolor="rgba(0,0,0,0)",
+        # Explicit bounds instead of fitbounds="locations".
+        # fitbounds scales the projection to fill whatever Streamlit gives,
+        # so changing height has no visual effect — everything just scales.
+        # Fixed lat/lon bounds pin Ukraine's geographic aspect ratio so
+        # height actually controls how tall the country appears.
+        lataxis_range=[43.5, 53.5],
+        lonaxis_range=[21.5, 41.0],
     )
     fig.update_layout(
         margin=dict(l=0, r=0, t=0, b=0),
-        height=520,
+        height=560,
         dragmode=False,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
