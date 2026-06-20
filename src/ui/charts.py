@@ -35,7 +35,7 @@ def render_seasonality_heatmap(oblast_name: str | None) -> None:
     fig = season_mod.build_heatmap_figure(
         matrix, title=f"Alert Seasonality — {title_suffix}"
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 
 def render_frequency_chart(oblast_name: str | None) -> None:
@@ -47,7 +47,7 @@ def render_frequency_chart(oblast_name: str | None) -> None:
     fig = freq_mod.build_frequency_figure(
         agg, oblast_name, title=f"Weekly Frequency vs. Duration — {title_suffix}"
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 
 def render_prediction_gauge(oblast_name: str | None) -> None:
@@ -82,4 +82,4 @@ def render_prediction_gauge(oblast_name: str | None) -> None:
         )
     )
     fig.update_layout(height=300, margin=dict(l=30, r=30, t=60, b=20))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")

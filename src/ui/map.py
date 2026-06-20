@@ -103,23 +103,27 @@ def render_map(
     fig.update_geos(
         fitbounds="locations",
         visible=False,
-        projection_scale=1,     # lock scale so double-click reset stays consistent
+        projection_scale=1,
     )
     fig.update_layout(
         margin=dict(l=0, r=0, t=0, b=0),
         height=420,
-        dragmode=False,         # no pan/drag
+        dragmode=False,
     )
+
+    # Store ordered feature names so state.py can fall back to pointNumber lookup
+    # if the "location" field is absent from the Plotly selection event.
+    st.session_state["_map_feature_names"] = oblast_names
 
     event = st.plotly_chart(
         fig,
-        use_container_width=True,
+        width="stretch",
         on_select="rerun",
         key="ukraine_map",
         config={
-            "scrollZoom": False,        # disable scroll-wheel zoom
-            "doubleClick": False,       # disable double-click zoom/reset
-            "displayModeBar": False,    # hide toolbar (removes zoom/pan buttons)
+            "scrollZoom": False,
+            "doubleClick": False,
+            "displayModeBar": False,
         },
     )
     return event
