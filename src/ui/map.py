@@ -101,7 +101,7 @@ def render_map(
         choropleth_kwargs.update(
             selectedpoints=[sel_idx],
             selected=dict(marker=dict(opacity=1.0)),
-            unselected=dict(marker=dict(opacity=0.2)),
+            unselected=dict(marker=dict(opacity=0.4)),
         )
 
     fig = go.Figure(go.Choropleth(**choropleth_kwargs))
