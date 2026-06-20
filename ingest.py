@@ -54,19 +54,90 @@ log = logging.getLogger("ingest")
 
 # ── Vadimkin dataset column map → internal schema ────────────────────────────
 # Source: github.com/Vadimkin/ukrainian-air-raid-sirens-dataset
-# Actual English CSV columns (official_data_en.csv, verified 2026-06-20):
+# Actual CSV columns (official_data_en.csv, verified 2026-06-20):
 #   oblast, raion, hromada, level, started_at, finished_at, source
 # No id or alert_type columns — both are synthesised during normalisation.
+#
+# The CSV `oblast` column uses Ukrainian administrative names in Latin
+# transliteration ("Kyivska oblast", "Odeska oblast") — NOT English names.
+# These are mapped to English GeoJSON name_en values below so that Parquet
+# oblast_name values are click-compatible with the choropleth map.
 _CSV_REQUIRED_COLS: frozenset[str] = frozenset({"oblast", "started_at", "finished_at", "level"})
 
-# Vadimkin uses short oblast names ("Cherkasy") while GeoJSON name:en uses the
-# long form ("Cherkasy Oblast"). All analytics join on oblast_name, so every
-# name must be normalised to the long form at ingest time.
-def _canonical_oblast(name: str) -> str:
-    """'Cherkasy' → 'Cherkasy Oblast'.  Already-canonical names pass through."""
-    if any(name.endswith(suffix) for suffix in ("Oblast", "City", "Republic", "Crimea")):
-        return name
-    return f"{name} Oblast"
+# Explicit mapping: raw CSV oblast value → canonical GeoJSON name_en.
+# GeoJSON name_en is the source of truth because it is the value Plotly
+# returns in on_select events when the user clicks a region.
+# "Kiev" and "Odessa" are corrected to modern spellings ("Kyiv", "Odesa")
+# by map.py's _load_geojson() so both sides stay in sync.
+_VADIMKIN_TO_CANONICAL: dict[str, str] = {
+    # Ukrainian administrative name → canonical English
+    "Cherkaska oblast":      "Cherkasy Oblast",
+    "Chernihivska oblast":   "Chernihiv Oblast",
+    "Chernivetska oblast":   "Chernivtsi Oblast",
+    "Dnipropetrovska oblast":"Dnipropetrovsk Oblast",
+    "Donetska oblast":       "Donetsk Oblast",
+    "Ivano-Frankivska oblast":"Ivano-Frankivsk Oblast",
+    "Kharkivska oblast":     "Kharkiv Oblast",
+    "Khersonska oblast":     "Kherson Oblast",
+    "Khmelnytska oblast":    "Khmelnytskyi Oblast",
+    "Kirovohradska oblast":  "Kirovohrad Oblast",
+    "Kyivska oblast":        "Kyiv Oblast",
+    "Luhanska oblast":       "Luhansk Oblast",
+    "Lvivska oblast":        "Lviv Oblast",
+    "Mykolaivska oblast":    "Mykolaiv Oblast",
+    "Odeska oblast":         "Odesa Oblast",
+    "Poltavska oblast":      "Poltava Oblast",
+    "Rivnenska oblast":      "Rivne Oblast",
+    "Sumska oblast":         "Sumy Oblast",
+    "Ternopilska oblast":    "Ternopil Oblast",
+    "Vinnytska oblast":      "Vinnytsia Oblast",
+    "Volynska oblast":       "Volyn Oblast",
+    "Zakarpatska oblast":    "Zakarpattia Oblast",
+    "Zaporizka oblast":      "Zaporizhia Oblast",
+    "Zhytomyrska oblast":    "Zhytomyr Oblast",
+    # Kyiv City — no GeoJSON polygon, kept in data for analytics
+    "Kyiv City":             "Kyiv City",
+    "m. Kyiv":               "Kyiv City",
+    # Legacy English short names (guard against dataset rollback)
+    "Cherkasy":              "Cherkasy Oblast",
+    "Chernihiv":             "Chernihiv Oblast",
+    "Chernivtsi":            "Chernivtsi Oblast",
+    "Dnipropetrovsk":        "Dnipropetrovsk Oblast",
+    "Donetsk":               "Donetsk Oblast",
+    "Ivano-Frankivsk":       "Ivano-Frankivsk Oblast",
+    "Kharkiv":               "Kharkiv Oblast",
+    "Kherson":               "Kherson Oblast",
+    "Khmelnytskyi":          "Khmelnytskyi Oblast",
+    "Kirovohrad":            "Kirovohrad Oblast",
+    "Kyiv":                  "Kyiv Oblast",
+    "Luhansk":               "Luhansk Oblast",
+    "Lviv":                  "Lviv Oblast",
+    "Mykolaiv":              "Mykolaiv Oblast",
+    "Odesa":                 "Odesa Oblast",
+    "Poltava":               "Poltava Oblast",
+    "Rivne":                 "Rivne Oblast",
+    "Sumy":                  "Sumy Oblast",
+    "Ternopil":              "Ternopil Oblast",
+    "Vinnytsia":             "Vinnytsia Oblast",
+    "Volyn":                 "Volyn Oblast",
+    "Zakarpattia":           "Zakarpattia Oblast",
+    "Zaporizhzhia":          "Zaporizhia Oblast",
+    "Zhytomyr":              "Zhytomyr Oblast",
+}
+
+
+def _normalize_oblast_name(raw: str) -> str | None:
+    """Map a raw CSV oblast value to canonical GeoJSON name_en.
+
+    Returns None for unrecognised values so the row can be dropped cleanly.
+    """
+    name = raw.strip()
+    if name in _VADIMKIN_TO_CANONICAL:
+        return _VADIMKIN_TO_CANONICAL[name]
+    # Autonomous Republic of Crimea — excluded from Vadimkin but guard anyway
+    if "Krym" in name or "Crimea" in name:
+        return "Autonomous Republic of Crimea"
+    return None
 
 # Max duration cap for open-ended alerts — matches cleaner.MAX_IMPUTE_HOURS
 _MAX_IMPUTE_HOURS: int = 24
@@ -139,9 +210,9 @@ class CsvFetcher:
         # All records in this dataset are air raid siren events.
         df["alert_type"] = "air_raid"
 
-        # Normalise to canonical "X Oblast" form so names match GeoJSON name:en values.
-        # Vadimkin uses short names ("Cherkasy"); GeoJSON and our lookup use long form.
-        df["oblast_name"] = df["oblast"].str.strip().apply(_canonical_oblast)
+        # Map raw CSV oblast values to canonical GeoJSON name_en strings.
+        # Returns None for unrecognised names; those rows are dropped by dropna below.
+        df["oblast_name"] = df["oblast"].apply(_normalize_oblast_name)
         df["region_type"] = df["level"].str.strip()
         df["mapping_source"] = "direct"
 
@@ -291,7 +362,7 @@ _OBLAST_NAME_TO_ID: dict[int, str] = {
     4: "Donetsk Oblast",
     5: "Zhytomyr Oblast",
     6: "Zakarpattia Oblast",
-    7: "Zaporizhzhia Oblast",
+    7: "Zaporizhia Oblast",
     8: "Ivano-Frankivsk Oblast",
     9: "Kyiv Oblast",
     10: "Kirovohrad Oblast",

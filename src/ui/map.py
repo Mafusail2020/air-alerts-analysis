@@ -28,12 +28,20 @@ def _load_geojson() -> dict:
         _GEO_PATH.parent.mkdir(parents=True, exist_ok=True)
         _GEO_PATH.write_text(json.dumps(data))
 
-    # Plotly featureidkey cannot handle colons in property names.
-    # The source GeoJSON uses "name:en" — normalise to "name_en" in-place.
+    # Two fixes applied to every feature in-place:
+    # 1. Rename "name:en" → "name_en" (Plotly featureidkey can't parse colons).
+    # 2. Normalize stale English spellings to match Parquet canonical names
+    #    so choropleth on_select returns the same string used to filter data.
+    _name_fixes = {
+        "Kiev Oblast":   "Kyiv Oblast",   # old transliteration
+        "Odessa Oblast": "Odesa Oblast",  # old transliteration
+    }
     for feature in data.get("features", []):
         props = feature.get("properties", {})
         if "name:en" in props:
             props["name_en"] = props["name:en"]
+        if "name_en" in props and props["name_en"] in _name_fixes:
+            props["name_en"] = _name_fixes[props["name_en"]]
 
     return data
 
