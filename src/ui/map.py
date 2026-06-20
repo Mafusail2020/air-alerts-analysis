@@ -101,29 +101,10 @@ def render_map(
         choropleth_kwargs.update(
             selectedpoints=[sel_idx],
             selected=dict(marker=dict(opacity=1.0)),
-            unselected=dict(marker=dict(opacity=0.4)),
+            unselected=dict(marker=dict(opacity=0.3)),
         )
 
     fig = go.Figure(go.Choropleth(**choropleth_kwargs))
-
-    if selected_oblast:
-        selected_df = df[df["oblast"] == selected_oblast]
-        if not selected_df.empty:
-            # Yellow border overlay for the active selection
-            fig.add_trace(
-                go.Choropleth(
-                    geojson=geojson,
-                    locations=selected_df["oblast"],
-                    featureidkey=f"properties.{name_field}",
-                    z=selected_df["count"],
-                    zmin=z_min,
-                    zmax=z_max,
-                    colorscale=[[0, "rgba(0,0,0,0)"], [1, "rgba(0,0,0,0)"]],
-                    showscale=False,
-                    marker_line_color="yellow",
-                    marker_line_width=3,
-                )
-            )
 
     fig.update_geos(
         visible=False,
