@@ -112,10 +112,11 @@ def render_map(
         fitbounds="locations",
         visible=False,
         projection_scale=1,
+        bgcolor="rgba(0,0,0,0)",
     )
     fig.update_layout(
         margin=dict(l=0, r=0, t=0, b=0),
-        height=420,
+        height=520,
         dragmode=False,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",

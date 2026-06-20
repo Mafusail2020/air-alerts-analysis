@@ -58,7 +58,7 @@ def build_frequency_figure(
             x=df["period_start"],
             y=df["alert_count"],
             name="Alert Count",
-            marker_color="rgba(220, 60, 60, 0.18)",
+            marker_color="rgba(220, 60, 60, 0.32)",
             marker_line_width=0,
             yaxis="y",
         )
