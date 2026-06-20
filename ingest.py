@@ -288,7 +288,7 @@ class AlertCleaner:
 
         df["end_time_resolved"] = pd.to_datetime(df["end_time_resolved"], utc=True)
 
-        # Duration — always computed last, after all time values are resolved
+        # Duration — computed before deduplication; recalculated after merge
         raw_seconds = (
             df["end_time_resolved"] - pd.to_datetime(df["started_at"], utc=True)
         ).dt.total_seconds()
@@ -296,7 +296,84 @@ class AlertCleaner:
         max_seconds = _MAX_IMPUTE_HOURS * 3600.0
         df["duration_seconds"] = raw_seconds.clip(lower=0, upper=max_seconds).astype("float32")
 
+        # Collapse overlapping alert windows per oblast.
+        # The dataset emits separate rows for oblast-, raion-, and hromada-level
+        # alerts for the same underlying event. Keeping all rows inflates both
+        # frequency counts and duration sums. _merge_overlapping_intervals reduces
+        # each cluster of overlapping intervals to the single covering window,
+        # then recomputes duration from the (potentially extended) end_time_resolved.
+        before = len(df)
+        df = self._merge_overlapping_intervals(df)
+        dropped = before - len(df)
+        if dropped:
+            log.info("Deduplication merged %d sub-level rows into parent intervals", dropped)
+
         return df
+
+    @staticmethod
+    def _merge_overlapping_intervals(df: pd.DataFrame) -> pd.DataFrame:
+        """Collapse overlapping alert windows per oblast into covering intervals.
+
+        Algorithm (vectorised sweep-line, O(n log n) due to sort):
+          1. Within each oblast group, sort ascending by start_time; break ties
+             by level priority (oblast > raion > hromada) so the highest-level
+             row survives as the representative.
+          2. Mark a new interval block wherever a row's start_time exceeds the
+             cumulative-maximum end_time of all preceding rows in the group.
+          3. Within each block, extend end_time_resolved to the block maximum
+             so the surviving row covers all merged rows.
+          4. Keep only the first (highest-priority) row per block via
+             drop_duplicates; recompute duration_seconds from the final window.
+        """
+        if df.empty:
+            return df
+
+        _LEVEL_ORDER = {"oblast": 0, "raion": 1, "hromada": 2}
+        parts: list[pd.DataFrame] = []
+
+        for _, grp in df.groupby("oblast_name", sort=False):
+            g = grp.copy()
+
+            # Sort: earlier start first; higher administrative level wins on ties
+            g["_prio"] = g["region_type"].map(_LEVEL_ORDER).fillna(99).astype(int)
+            g = (
+                g.sort_values(["start_time", "_prio"])
+                .drop(columns=["_prio"])
+                .reset_index(drop=True)
+            )
+
+            # Cumulative max of all previous end_time_resolved values.
+            # At position i this equals max(end[0..i-1]) — the farthest any
+            # already-started interval extends before row i begins.
+            prev_max_end = g["end_time_resolved"].shift(1).cummax()
+
+            # A new disjoint block begins where this row starts AFTER the
+            # running maximum end.  The first row always starts a new block.
+            is_new_block = g["start_time"] > prev_max_end
+            is_new_block.iloc[0] = True
+            g["_block"] = is_new_block.cumsum()
+
+            # Extend every row's end_time_resolved to its block's maximum,
+            # then keep only the first (highest-priority) row per block.
+            g["end_time_resolved"] = g.groupby("_block")["end_time_resolved"].transform("max")
+            survivors = (
+                g.drop_duplicates(subset="_block", keep="first")
+                .drop(columns=["_block"])
+                .reset_index(drop=True)
+            )
+
+            parts.append(survivors)
+
+        merged = pd.concat(parts, ignore_index=True)
+
+        # Recompute duration — end_time_resolved may have been extended
+        merged["duration_seconds"] = (
+            (merged["end_time_resolved"] - merged["start_time"])
+            .dt.total_seconds()
+            .clip(lower=0, upper=_MAX_IMPUTE_HOURS * 3600.0)
+            .astype("float32")
+        )
+        return merged
 
 
 # ── Pipeline orchestrator ─────────────────────────────────────────────────────
