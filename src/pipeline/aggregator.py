@@ -31,7 +31,7 @@ def compute_rollups(raw: pd.DataFrame) -> pd.DataFrame:
     # Exclude permanent outliers — baked in at write time
     clean = raw[~raw["is_permanent_outlier"]].copy()
 
-    started = pd.to_datetime(clean["started_at"], utc=True)
+    started = pd.to_datetime(clean["start_time"], utc=True)
     clean["hour_of_day"] = started.dt.hour.astype("int8")
     clean["day_of_week"] = started.dt.dayofweek.astype("int8")  # 0=Mon
 
@@ -41,7 +41,7 @@ def compute_rollups(raw: pd.DataFrame) -> pd.DataFrame:
     weekly = (
         clean.groupby(["period_start", "oblast_name"])
         .agg(
-            alert_count=("id", "count"),
+            alert_count=("alert_id", "count"),
             total_duration_hours=("duration_seconds", lambda s: s.sum(skipna=True) / 3600.0),
         )
         .reset_index()
@@ -52,7 +52,7 @@ def compute_rollups(raw: pd.DataFrame) -> pd.DataFrame:
     # Heatmap cell counts per (hour, dow, oblast)
     heatmap = (
         clean.groupby(["hour_of_day", "day_of_week", "oblast_name"])
-        .agg(heatmap_cell_count=("id", "count"))
+        .agg(heatmap_cell_count=("alert_id", "count"))
         .reset_index()
     )
     heatmap["heatmap_cell_count"] = heatmap["heatmap_cell_count"].astype("int32")

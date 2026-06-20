@@ -51,19 +51,10 @@ log = logging.getLogger("ingest")
 
 # ── Vadimkin dataset column map → internal schema ────────────────────────────
 # Source: github.com/Vadimkin/ukrainian-air-raid-sirens-dataset
-# English CSV columns (official_data_en.csv):
-#   id, location_uid, location_oblast, location_raion, location_type,
-#   started_at, finished_at, calculated_duration_seconds, alert_type, ...
-_CSV_COLUMN_MAP: dict[str, str] = {
-    "id": "id",
-    "location_uid": "location_uid",
-    "location_oblast": "region_name",   # always Oblast-level label
-    "location_raion": "raion_name",     # null for pre-Dec-2025 records
-    "location_type": "region_type",     # "oblast" | "raion"
-    "started_at": "started_at",
-    "finished_at": "finished_at",
-    "alert_type": "alert_type",
-}
+# Actual English CSV columns (official_data_en.csv, verified 2026-06-20):
+#   oblast, raion, hromada, level, started_at, finished_at, source
+# No id or alert_type columns — both are synthesised during normalisation.
+_CSV_REQUIRED_COLS: frozenset[str] = frozenset({"oblast", "started_at", "finished_at", "level"})
 
 # Max duration cap for open-ended alerts — matches cleaner.MAX_IMPUTE_HOURS
 _MAX_IMPUTE_HOURS: int = 24
@@ -112,37 +103,44 @@ class CsvFetcher:
         return self._normalize_schema(df)
 
     def _normalize_schema(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Rename CSV columns to internal names, parse timestamps, drop unknowns."""
-        missing = [c for c in _CSV_COLUMN_MAP if c not in df.columns]
+        """Map actual CSV columns to internal schema and synthesise missing fields."""
+        missing = _CSV_REQUIRED_COLS - set(df.columns)
         if missing:
             raise ValueError(
-                f"CSV schema mismatch — expected columns not found: {missing}\n"
+                f"CSV schema mismatch — required columns absent: {sorted(missing)}\n"
                 f"Actual columns: {list(df.columns)}"
             )
 
-        df = df.rename(columns=_CSV_COLUMN_MAP)
-        keep = list(_CSV_COLUMN_MAP.values())
-        df = df[[c for c in keep if c in df.columns]].copy()
+        df = df.copy()
 
         # Parse timestamps — CSV stores UTC ISO strings
         for col in ("started_at", "finished_at"):
             df[col] = pd.to_datetime(df[col], utc=True, errors="coerce")
 
-        # Numeric id
-        df["id"] = pd.to_numeric(df["id"], errors="coerce").astype("Int64")
+        # Synthesise a stable integer id: hash of (oblast, started_at string).
+        # Reproducible across runs so deduplication in store.append_raw() works.
+        df["id"] = pd.util.hash_pandas_object(
+            df[["oblast", "started_at"]].astype(str), index=False
+        ).astype("Int64")
 
-        # Normalise alert_type to lowercase for consistency
-        df["alert_type"] = df["alert_type"].str.lower().fillna("unknown")
+        # All records in this dataset are air raid siren events.
+        df["alert_type"] = "air_raid"
 
-        # The Vadimkin dataset provides location_oblast on every row regardless
-        # of location_type, so oblast_name is directly available — no mapper needed.
-        df["oblast_name"] = df["region_name"].str.strip()
+        # Oblast name is always the top-level "oblast" column regardless of level.
+        df["oblast_name"] = df["oblast"].str.strip()
+        df["region_type"] = df["level"].str.strip()
+        df["raion_name"] = df["raion"] if "raion" in df.columns else pd.NA
         df["mapping_source"] = "direct"
-        df["oblast_id"] = df["oblast_name"].map(
-            {v: k for k, v in _OBLAST_NAME_TO_ID.items()}
-        ).astype("Int16")
 
-        # raion_id is not an integer code in this dataset — leave nullable
+        name_to_id = {v: k for k, v in _OBLAST_NAME_TO_ID.items()}
+        df["oblast_id"] = df["oblast_name"].map(name_to_id).astype("Int16")
+
+        unmapped = df["oblast_id"].isna().sum()
+        if unmapped:
+            unknown = df.loc[df["oblast_id"].isna(), "oblast_name"].unique().tolist()
+            log.warning("%d rows have unrecognised oblast names: %s", unmapped, unknown)
+
+        # raion_id not available as integer in this dataset
         df["raion_id"] = pd.array([pd.NA] * len(df), dtype="Int16")
 
         return df.dropna(subset=["id", "started_at", "oblast_name"])
