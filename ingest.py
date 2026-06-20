@@ -337,7 +337,7 @@ class AlertCleaner:
             # Sort: earlier start first; higher administrative level wins on ties
             g["_prio"] = g["region_type"].map(_LEVEL_ORDER).fillna(99).astype(int)
             g = (
-                g.sort_values(["start_time", "_prio"])
+                g.sort_values(["started_at", "_prio"])
                 .drop(columns=["_prio"])
                 .reset_index(drop=True)
             )
@@ -349,7 +349,7 @@ class AlertCleaner:
 
             # A new disjoint block begins where this row starts AFTER the
             # running maximum end.  The first row always starts a new block.
-            is_new_block = g["start_time"] > prev_max_end
+            is_new_block = g["started_at"] > prev_max_end
             is_new_block.iloc[0] = True
             g["_block"] = is_new_block.cumsum()
 
@@ -368,7 +368,7 @@ class AlertCleaner:
 
         # Recompute duration — end_time_resolved may have been extended
         merged["duration_seconds"] = (
-            (merged["end_time_resolved"] - merged["start_time"])
+            (merged["end_time_resolved"] - merged["started_at"])
             .dt.total_seconds()
             .clip(lower=0, upper=_MAX_IMPUTE_HOURS * 3600.0)
             .astype("float32")
