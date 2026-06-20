@@ -48,7 +48,7 @@ def main() -> None:
     state_mod.init_session_state()
 
     # ── Header ───────────────────────────────────────────────────────────────
-    st.title("Ukraine Air Raid Intelligence Dashboard")
+    st.title("🚨 Ukraine Air Raid Intelligence Dashboard")
 
     active_oblasts, active_count = _get_active_oblasts()
     selected = st.session_state["selected_oblast"]
@@ -100,7 +100,11 @@ def main() -> None:
         charts.render_seasonality_heatmap(selected)
 
     with tab2:
-        st.caption("Weekly alert count (bars, left axis) vs. cumulative alert duration in hours (line, right axis).")
+        st.caption(
+            "Weekly alert count (pale red bars, left) vs. average alert duration per event in hours "
+            "(blue line, right). Rising line = longer individual alerts (intensity); "
+            "rising bars = higher event frequency."
+        )
         charts.render_frequency_chart(selected)
 
     with tab3:

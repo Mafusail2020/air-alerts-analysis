@@ -117,6 +117,8 @@ def render_map(
         margin=dict(l=0, r=0, t=0, b=0),
         height=420,
         dragmode=False,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
     )
 
     # Store ordered feature names so state.py can fall back to pointNumber lookup
