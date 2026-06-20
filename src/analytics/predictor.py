@@ -105,6 +105,9 @@ def predict_alert_probability(
     slug = _oblast_slug(oblast_name)
     model_path = MODEL_DIR / f"model_{slug}.pkl"
 
+    if raw.empty or "oblast_name" not in raw.columns:
+        return 0.0
+
     subset = raw[raw["oblast_name"] == oblast_name]
     if subset.empty:
         return 0.0

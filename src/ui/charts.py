@@ -27,6 +27,9 @@ def _cached_agg(oblast_name: str | None) -> object:
 
 def render_seasonality_heatmap(oblast_name: str | None) -> None:
     raw = store.read_raw()
+    if raw.empty:
+        st.info("No data. Run `python ingest.py` to populate the cache.")
+        return
     matrix = season_mod.compute_heatmap_matrix(raw, oblast_name)
     title_suffix = oblast_name or "All Oblasts (National)"
     fig = season_mod.build_heatmap_figure(

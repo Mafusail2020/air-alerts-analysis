@@ -24,6 +24,9 @@ def compute_heatmap_matrix(
     Returns:
         24×7 pivot DataFrame — rows=hour (0–23 Kyiv), cols=day-of-week (Mon–Sun).
     """
+    if raw.empty or "is_permanent_outlier" not in raw.columns:
+        return pd.DataFrame(0, index=range(24), columns=_DOW_LABELS)
+
     df = raw[~raw["is_permanent_outlier"]].copy()
     if oblast_name:
         df = df[df["oblast_name"] == oblast_name]
