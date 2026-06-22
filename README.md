@@ -1,4 +1,4 @@
-# Ukraine Air Raid Intelligence Dashboard
+# Ukraine Air Raid Intelligence Dashboard (Built for KSE Stage 2 Test task)
 
 Interactive time-series analytics dashboard for Ukrainian air raid alerts. Built with Python, Streamlit, and Plotly.
 
